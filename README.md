@@ -20,8 +20,9 @@ Spring Boot 4.1.2, Spring Framework 7.0.10, Jetty 12.1.14 (ee11), Tomcat 11.0.27
 ## Run it
 
 ```sh
+./gradlew test --tests '*ServletAsyncDispatchTests'   # Servlet API only, no Spring: Jetty fails, Tomcat passes
 ./gradlew test --tests '*PlainJettyReproTests'   # minimal case only: 3 of 8 fail
-./gradlew test   # both tests below; 6 of 32 cases fail, all Jetty + X-Forwarded-Prefix + async
+./gradlew test   # all tests below; 7 of 34 cases fail, all Jetty + X-Forwarded-Prefix + async
 ./repro.sh       # the Tomcat vs Jetty matrix with curl, printed as a table
 ```
 
@@ -29,10 +30,14 @@ All tests assert the **correct** behaviour (200, the expected body, no WARN/ERRO
 failing cases are the bug. Every response shows the `requestURI` and `contextPath` the controller saw.
 The handlers are shared: [`Endpoints`](src/main/java/com/example/repro/web/Endpoints.java).
 
-1. **Minimal, no Spring Boot:** [`PlainJettyReproTests`](src/test/java/com/example/repro/PlainJettyReproTests.java)
+1. **Servlet API only, no Spring:** [`ServletAsyncDispatchTests`](src/test/java/com/example/repro/ServletAsyncDispatchTests.java)
+   wraps the request so it reports `contextPath=/api`, calls `startAsync(wrapper, response).dispatch()`, and
+   prints the path elements the ASYNC dispatch sees. Tomcat: `contextPath=/api servletPath=/app/x`.
+   Jetty: `contextPath= servletPath=/api/app/x`. This is the container difference behind the bug.
+2. **Minimal, no Spring Boot:** [`PlainJettyReproTests`](src/test/java/com/example/repro/PlainJettyReproTests.java)
    runs plain Jetty 12 with a bare `DispatcherServlet`, `@EnableWebMvc` and `ForwardedHeaderFilter`,
    in memory through Jetty's `LocalConnector`. 3 of 8 cases fail.
-2. **Tomcat vs Jetty with Spring Boot:** [`ReproSpringJettyApplicationTests`](src/test/java/com/example/repro/ReproSpringJettyApplicationTests.java)
+3. **Tomcat vs Jetty with Spring Boot:** [`ReproSpringJettyApplicationTests`](src/test/java/com/example/repro/ReproSpringJettyApplicationTests.java)
    starts the Boot app, which runs the same controller on embedded Tomcat (`/tomcat/...`) and embedded
    Jetty (`/jetty/...`) in one JVM, and checks every combination of server, handler type and forwarded
    header. 3 of 24 cases fail, all on Jetty; every Tomcat case passes.
